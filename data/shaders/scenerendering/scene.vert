@@ -1,8 +1,5 @@
 #version 450
 
-#extension GL_ARB_separate_shader_objects : enable
-#extension GL_ARB_shading_language_420pack : enable
-
 layout (location = 0) in vec3 inPos;
 layout (location = 1) in vec3 inNormal;
 layout (location = 2) in vec2 inUV;
@@ -40,6 +37,6 @@ void main()
 	vec4 pos = modelView * vec4(inPos, 0.0);
 	outNormal = mat3(ubo.model) * inNormal;
 	vec3 lPos = mat3(ubo.model) * ubo.lightPos.xyz;
-	outLightVec = lPos - (ubo.model * vec4(inPos, 0.0)).xyz;
-	outViewVec = -(ubo.model * vec4(inPos, 0.0)).xyz;		
+	outLightVec = lPos - (ubo.model * vec4(inPos, 1.0)).xyz;
+	outViewVec = -(ubo.model * vec4(inPos, 1.0)).xyz;		
 }

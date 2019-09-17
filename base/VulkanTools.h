@@ -21,6 +21,7 @@
 #include <vector>
 #include <iostream>
 #include <stdexcept>
+#include <fstream>
 #if defined(_WIN32)
 #include <windows.h>
 #include <fcntl.h>
@@ -68,6 +69,9 @@ namespace vks
 {
 	namespace tools
 	{
+		/** @brief Disable message boxes on fatal errors */
+		extern bool errorModeSilent;
+
 		/** @brief Returns an error code as a string */
 		std::string errorString(VkResult errorCode);
 
@@ -82,7 +86,6 @@ namespace vks
 		void setImageLayout(
 			VkCommandBuffer cmdbuffer,
 			VkImage image,
-			VkImageAspectFlags aspectMask,
 			VkImageLayout oldImageLayout,
 			VkImageLayout newImageLayout,
 			VkImageSubresourceRange subresourceRange,
@@ -111,17 +114,17 @@ namespace vks
 			VkImageSubresourceRange subresourceRange);
 
 		// Display error message and exit on fatal error
-		void exitFatal(std::string message, std::string caption);
+		void exitFatal(std::string message, int32_t exitCode);
+		void exitFatal(std::string message, VkResult resultCode);
 
 		// Load a SPIR-V shader (binary) 
 #if defined(__ANDROID__)
-		VkShaderModule loadShader(AAssetManager* assetManager, const char *fileName, VkDevice device, VkShaderStageFlagBits stage);
+		VkShaderModule loadShader(AAssetManager* assetManager, const char *fileName, VkDevice device);
 #else
-		VkShaderModule loadShader(const char *fileName, VkDevice device, VkShaderStageFlagBits stage);
+		VkShaderModule loadShader(const char *fileName, VkDevice device);
 #endif
 
-		// Load a GLSL shader (text)
-		// Note: GLSL support requires vendor-specific extensions to be enabled and is not a core-feature of Vulkan
-		VkShaderModule loadShaderGLSL(const char *fileName, VkDevice device, VkShaderStageFlagBits stage);
+		/** @brief Checks if a file exists */
+		bool fileExists(const std::string &filename);
 	}
 }

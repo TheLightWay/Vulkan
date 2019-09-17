@@ -12,6 +12,8 @@ namespace vks
 {
 	namespace tools
 	{
+		bool errorModeSilent = false;
+
 		std::string errorString(VkResult errorCode)
 		{
 			switch (errorCode)
@@ -94,7 +96,6 @@ namespace vks
 		void setImageLayout(
 			VkCommandBuffer cmdbuffer,
 			VkImage image,
-			VkImageAspectFlags aspectMask,
 			VkImageLayout oldImageLayout,
 			VkImageLayout newImageLayout,
 			VkImageSubresourceRange subresourceRange,
@@ -156,6 +157,9 @@ namespace vks
 				// Make sure any shader reads from the image have been finished
 				imageMemoryBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
 				break;
+			default:
+				// Other source layouts aren't handled (yet)
+				break;
 			}
 
 			// Target layouts (new)
@@ -170,15 +174,13 @@ namespace vks
 
 			case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
 				// Image will be used as a transfer source
-				// Make sure any reads from and writes to the image have been finished
-				imageMemoryBarrier.srcAccessMask = imageMemoryBarrier.srcAccessMask | VK_ACCESS_TRANSFER_READ_BIT;
+				// Make sure any reads from the image have been finished
 				imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 				break;
 
 			case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
 				// Image will be used as a color attachment
 				// Make sure any writes to the color buffer have been finished
-				imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 				imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 				break;
 
@@ -196,6 +198,9 @@ namespace vks
 					imageMemoryBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
 				}
 				imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+				break;
+			default:
+				// Other source layouts aren't handled (yet)
 				break;
 			}
 
@@ -225,7 +230,7 @@ namespace vks
 			subresourceRange.baseMipLevel = 0;
 			subresourceRange.levelCount = 1;
 			subresourceRange.layerCount = 1;
-			setImageLayout(cmdbuffer, image, aspectMask, oldImageLayout, newImageLayout, subresourceRange);
+			setImageLayout(cmdbuffer, image, oldImageLayout, newImageLayout, subresourceRange, srcStageMask, dstStageMask);
 		}
 
 		void insertImageMemoryBarrier(
@@ -257,16 +262,25 @@ namespace vks
 				1, &imageMemoryBarrier);
 		}
 
-		void exitFatal(std::string message, std::string caption)
+		void exitFatal(std::string message, int32_t exitCode)
 		{
 #if defined(_WIN32)
-			MessageBox(NULL, message.c_str(), caption.c_str(), MB_OK | MB_ICONERROR);
-#elif defined(__ANDROID__)	
-			LOGE("Fatal error: %s", message.c_str());
-#else
-			std::cerr << message << "\n";
+			if (!errorModeSilent) {
+				MessageBox(NULL, message.c_str(), NULL, MB_OK | MB_ICONERROR);
+			}
+#elif defined(__ANDROID__)
+            LOGE("Fatal error: %s", message.c_str());
+			vks::android::showAlert(message.c_str());
 #endif
-			exit(1);
+			std::cerr << message << "\n";
+#if !defined(__ANDROID__)
+			exit(exitCode);
+#endif
+		}
+
+		void exitFatal(std::string message, VkResult resultCode)
+		{
+			exitFatal(message, (int32_t)resultCode);
 		}
 
 		std::string readTextFile(const char *fileName)
@@ -289,7 +303,7 @@ namespace vks
 #if defined(__ANDROID__)
 		// Android shaders are stored as assets in the apk
 		// So they need to be loaded via the asset manager
-		VkShaderModule loadShader(AAssetManager* assetManager, const char *fileName, VkDevice device, VkShaderStageFlagBits stage)
+		VkShaderModule loadShader(AAssetManager* assetManager, const char *fileName, VkDevice device)
 		{
 			// Load shader from compressed asset
 			AAsset* asset = AAssetManager_open(assetManager, fileName, AASSET_MODE_STREAMING);
@@ -316,7 +330,7 @@ namespace vks
 			return shaderModule;
 		}
 #else
-		VkShaderModule loadShader(const char *fileName, VkDevice device, VkShaderStageFlagBits stage)
+		VkShaderModule loadShader(const char *fileName, VkDevice device)
 		{
 			std::ifstream is(fileName, std::ios::binary | std::ios::in | std::ios::ate);
 
@@ -350,30 +364,10 @@ namespace vks
 		}
 #endif
 
-		VkShaderModule loadShaderGLSL(const char *fileName, VkDevice device, VkShaderStageFlagBits stage)
+		bool fileExists(const std::string &filename)
 		{
-			std::string shaderSrc = readTextFile(fileName);
-			const char *shaderCode = shaderSrc.c_str();
-			size_t size = strlen(shaderCode);
-			assert(size > 0);
-
-			VkShaderModule shaderModule;
-			VkShaderModuleCreateInfo moduleCreateInfo;
-			moduleCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-			moduleCreateInfo.pNext = NULL;
-			moduleCreateInfo.codeSize = 3 * sizeof(uint32_t) + size + 1;
-			moduleCreateInfo.pCode = (uint32_t*)malloc(moduleCreateInfo.codeSize);
-			moduleCreateInfo.flags = 0;
-
-			// Magic SPV number
-			((uint32_t *)moduleCreateInfo.pCode)[0] = 0x07230203;
-			((uint32_t *)moduleCreateInfo.pCode)[1] = 0;
-			((uint32_t *)moduleCreateInfo.pCode)[2] = stage;
-			memcpy(((uint32_t *)moduleCreateInfo.pCode + 3), shaderCode, size + 1);
-
-			VK_CHECK_RESULT(vkCreateShaderModule(device, &moduleCreateInfo, NULL, &shaderModule));
-
-			return shaderModule;
+			std::ifstream f(filename.c_str());
+			return !f.fail();
 		}
 	}
 }
